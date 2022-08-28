@@ -55,9 +55,20 @@ private:
    static constexpr auto value = Index<std::integral_constant<Param, p>, Tuple>::value + 1;
 };
 
+template <class ENUM>
+struct EnumClassHash
+{
+   auto operator()(ENUM t) const { return static_cast<std::size_t>(t); }
+};
 }  // namespace detail
 
-template <class ENUM, class DERIVED>
+template <class... ALLOWED_TYPES>
+struct AllowedTypes
+{
+   using type = std::tuple<ALLOWED_TYPES...>;
+};
+
+template <class ENUM, class AllowedTypes, class DERIVED>
 class MagicParams
 {
 private:
@@ -73,10 +84,10 @@ private:
       using value_type = VALUE_TYPE;
       static constexpr ENUM key = enum_entry;
 
-      constexpr ParamEntry(value_type defaultvalue, const char* description)
-          : defaultvalue(defaultvalue), description(description){};
+      constexpr ParamEntry(value_type defaultValue, const char* description)
+          : defaultValue(defaultValue), description(description){};
 
-      value_type defaultvalue;
+      value_type defaultValue;
       const char* description;
    };
 
@@ -104,9 +115,53 @@ public:
       constexpr auto index = detail::EnumToIndex<key, decltype(DERIVED::settings)>::get();
       return std::get<index>(DERIVED::settings);
    }
+
+   template <Param key>
+   auto get() const
+   {
+      constexpr auto defaultValue = getDefaultParamEntry<Param::one>();
+      using value_type_searched = typename decltype(defaultValue)::value_type;
+      constexpr auto indexOfRuntimeMaps = detail::Index<value_type_searched, const AllowedTypes::type>::value;
+
+      auto& store = std::get<indexOfRuntimeMaps>(runtimestore_);
+      auto it = store.find(key);
+      if (it == store.end())
+         return defaultValue.defaultValue;
+      else
+         return it->second;
+   }
+
+private:
+   template <class ValueType>
+   using StoreSingleType = std::unordered_map<ENUM, ValueType, detail::EnumClassHash<ENUM>>;
+
+   template <typename... Types>
+   using tuple_cat_t = decltype(std::tuple_cat(std::declval<Types>()...));
+
+   template <class Tuple>
+   struct RuntimeStore;
+
+   template <class T>
+   struct RuntimeStore<std::tuple<T>>
+   {
+      static_assert(std::is_trivial<T>::value,
+                    "Allowed value types for magic_params are only trivial types that can be constexpr.");
+      using type = std::tuple<StoreSingleType<T>>;
+   };
+
+   template <class T, class... Types>
+   struct RuntimeStore<std::tuple<T, Types...>>
+   {
+      static_assert(std::is_trivial<T>::value,
+                    "Allowed value types for magic_params are only trivial types that can be constexpr.");
+      using type = tuple_cat_t<std::tuple<StoreSingleType<T>>, typename RuntimeStore<std::tuple<Types...>>::type>;
+   };
+
+public:
+   typename RuntimeStore<typename AllowedTypes::type>::type runtimestore_;
 };
 
-struct MyMagicParams : MagicParams<Param, MyMagicParams>
+struct MyMagicParams : MagicParams<Param, AllowedTypes<int, const char*, double>, MyMagicParams>
 {
    constexpr MyMagicParams(){};
 
@@ -120,8 +175,17 @@ int main()
    constexpr auto entry = MyMagicParams::getDefaultParamEntry<Param::two>();
 
    std::cout << "Parameter " << static_cast<int>(entry.key) << " with description'" << entry.description
-             << "' has default value '" << entry.defaultvalue << "'.";
+             << "' has default value '" << entry.defaultValue << "'.";
 
+   auto myParams = MyMagicParams();
+   const auto& m = std::get<0>(myParams.runtimestore_);
+   auto i = myParams.get<Param::one>();
+
+   // constexpr auto defaultValue = myParams.getDefaultParamEntry<Param::one>();
+   // using value_type_searched = typename decltype(defaultValue)::value_type;
+   // constexpr auto indexOfRuntimeMaps = detail::Index<value_type_searched, typename allowed::type>::value;
+
+   std::cout << i;
    // WOULD FAIL with meaningful static_assert-message.
    // constexpr auto entry = MagicParams::getDefaultParamEntry<Param::three>();
 }
