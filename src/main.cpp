@@ -41,6 +41,15 @@ struct PrintAssertIfKeyNotExistent
    static constexpr bool dummy = exists;
 };
 
+template <Param key, bool print>
+struct PrintAssertIfKeyCausesProblems
+{
+   static_assert(!print,
+                 "Look below for a message such as 'PrintAssertIfKeyCausesProblems<Param::three,false>' to know which "
+                 "key creates problems.");
+   static constexpr bool dummy = print;
+};
+
 template <Param p, class Tuple>
 struct EnumToIndex
 {
@@ -78,7 +87,7 @@ private:
    {
    };
 
-   template <ENUM enum_entry, class VALUE_TYPE>
+   template <ENUM enum_entry, class VALUE_TYPE, typename = void>
    struct ParamEntry : ParamEntryBase
    {
       using value_type = VALUE_TYPE;
@@ -89,6 +98,26 @@ private:
 
       value_type defaultValue;
       const char* description;
+   };
+
+   template <ENUM enum_entry, class VALUE_TYPE>
+   struct ParamEntryWithBounds : ParamEntry<enum_entry, VALUE_TYPE>
+   {
+      using Base = ParamEntry<enum_entry, VALUE_TYPE>;
+      using typename Base::value_type;
+
+      static_assert(std::is_arithmetic<value_type>::value, "Parameter with bounds need to be arithmetic!");
+      // static constexpr auto b =
+      //     detail::PrintAssertIfKeyCausesProblems<enum_entry, !std::is_arithmetic<value_type>::value>::dummy;
+
+      constexpr ParamEntryWithBounds(value_type defaultValue,
+                                     const char* description,
+                                     value_type lowerBound = std::numeric_limits<value_type>::min(),
+                                     value_type upperBound = std::numeric_limits<value_type>::max())
+          : Base(defaultValue, description), lowerBound(lowerBound), upperBound(upperBound){};
+
+      value_type lowerBound;
+      value_type upperBound;
    };
 
 protected:
@@ -213,7 +242,7 @@ struct MyMagicParams : MagicParams<Param, AllowedTypes<int, const char*, double>
    constexpr MyMagicParams(){};
 
    static constexpr auto settings =
-       make_param_tuple(ParamEntry<Param::one, int>(0, "first parameter"),
+       make_param_tuple(ParamEntryWithBounds<Param::one, const char*>(0, "first parameter", -1, 10),
                         ParamEntry<Param::two, const char*>("Default-String", "second parameter"));
 };
 
@@ -232,10 +261,10 @@ int main()
    // using value_type_searched = typename decltype(defaultValue)::value_type;
    // constexpr auto indexOfRuntimeMaps = detail::Index<value_type_searched, typename allowed::type>::value;
 
-   std::cout << i;
-   std::cout << "before" << myParams.get<Param::one>() << "\n";
-   myParams.set<Param::one>(2);
-   std::cout << myParams.get<Param::one>();
+   // std::cout << i;
+   // std::cout << "before" << myParams.get<Param::one>() << "\n";
+   // myParams.set<Param::one>(2);
+   // std::cout << myParams.get<Param::one>();
    // WOULD FAIL with meaningful static_assert-message.
    // constexpr auto entry = MagicParams::getDefaultParamEntry<Param::three>();
 }
