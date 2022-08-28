@@ -12,34 +12,6 @@ enum class Param
    three
 };
 
-template <Param enum_entry, class VALUE_TYPE>
-struct ParamEntry
-{
-   static_assert(std::is_enum<Param>::value, "ENUM_TYPE must be an enum in ParamEntry!");
-
-   using value_type = VALUE_TYPE;
-
-   static constexpr Param key = enum_entry;
-
-   constexpr ParamEntry(value_type defaultvalue, const char* description)
-       : defaultvalue(defaultvalue), description(description){};
-
-   value_type defaultvalue;
-   const char* description;
-};
-
-template <class T>
-constexpr auto make_param_tuple(T t)
-{
-   return std::make_tuple(std::integral_constant<Param, T::key>(), t);
-}
-
-template <class T, class... Types>
-constexpr auto make_param_tuple(T t, Types... args)
-{
-   return std::tuple_cat(std::make_tuple(std::integral_constant<Param, T::key>(), t), make_param_tuple(args...));
-}
-
 namespace detail
 {
 template <class T, class Tuple>
@@ -82,28 +54,70 @@ struct EnumToIndex
 private:
    static constexpr auto value = Index<std::integral_constant<Param, p>, Tuple>::value + 1;
 };
+
 }  // namespace detail
 
+template <class ENUM, class DERIVED>
 class MagicParams
 {
-public:
-   static constexpr auto tuples =
-       make_param_tuple(ParamEntry<Param::one, int>(0, "first parameter"),
-                        ParamEntry<Param::two, const char*>("Default-String", "second parameter"));
+private:
+   static_assert(std::is_enum<ENUM>::value, "ENUM_TYPE must be an enum in ParamEntry!");
 
+   struct ParamEntryBase
+   {
+   };
+
+   template <ENUM enum_entry, class VALUE_TYPE>
+   struct ParamEntry : ParamEntryBase
+   {
+      using value_type = VALUE_TYPE;
+      static constexpr ENUM key = enum_entry;
+
+      constexpr ParamEntry(value_type defaultvalue, const char* description)
+          : defaultvalue(defaultvalue), description(description){};
+
+      value_type defaultvalue;
+      const char* description;
+   };
+
+protected:
+   template <class T>
+   static constexpr auto make_param_tuple(T t)
+   {
+      static_assert(std::is_base_of<ParamEntryBase, T>::value, "Parameter entries have to be of type ParamEntry!");
+      return std::make_tuple(std::integral_constant<Param, T::key>(), t);
+   }
+
+   template <class T, class... Types>
+   static constexpr auto make_param_tuple(T t, Types... args)
+   {
+      static_assert(std::is_base_of<ParamEntryBase, T>::value, "Parameter entries have to be of type ParamEntry!");
+      return std::tuple_cat(std::make_tuple(std::integral_constant<Param, T::key>(), t), make_param_tuple(args...));
+   }
+
+public:
    constexpr MagicParams() {}
 
    template <Param key>
    static constexpr auto getDefaultParamEntry()
    {
-      constexpr auto index = detail::EnumToIndex<key, decltype(tuples)>::get();
-      return std::get<index>(tuples);
+      constexpr auto index = detail::EnumToIndex<key, decltype(DERIVED::settings)>::get();
+      return std::get<index>(DERIVED::settings);
    }
+};
+
+struct MyMagicParams : MagicParams<Param, MyMagicParams>
+{
+   constexpr MyMagicParams(){};
+
+   static constexpr auto settings =
+       make_param_tuple(ParamEntry<Param::one, int>(0, "first parameter"),
+                        ParamEntry<Param::two, const char*>("Default-String", "second parameter"));
 };
 
 int main()
 {
-   constexpr auto entry = MagicParams::getDefaultParamEntry<Param::two>();
+   constexpr auto entry = MyMagicParams::getDefaultParamEntry<Param::two>();
 
    std::cout << "Parameter " << static_cast<int>(entry.key) << " with description'" << entry.description
              << "' has default value '" << entry.defaultvalue << "'.";
