@@ -106,9 +106,6 @@ protected:
       return std::tuple_cat(std::make_tuple(std::integral_constant<Param, T::key>(), t), make_param_tuple(args...));
    }
 
-public:
-   constexpr MagicParams() {}
-
    template <Param key>
    static constexpr auto getDefaultParamEntry()
    {
@@ -116,19 +113,69 @@ public:
       return std::get<index>(DERIVED::settings);
    }
 
+public:
+   constexpr MagicParams() {}
+
+   template <Param key>
+   constexpr auto getDescription() const
+   {
+      return getDefaultParamEntry<key>().description;
+   }
+
+   template <Param key>
+   constexpr auto getDefault() const
+   {
+      return getDefaultParamEntry<key>().defaultValue;
+   }
+
    template <Param key>
    auto get() const
+   {
+      constexpr auto defaultValue = getDefaultParamEntry<Param::one>();
+
+      using value_type_searched = typename decltype(defaultValue)::value_type;
+      constexpr auto indexOfRuntimeMaps = detail::Index<value_type_searched, const AllowedTypes::type>::value;
+
+      auto& store = std::get<indexOfRuntimeMaps>(runtimestore_);
+
+      auto it = store.find(key);
+      if (it == store.end())
+         return defaultValue.defaultValue;
+      else
+         return it->second;
+   }
+
+   template <Param key>
+   bool set(decltype(std::declval<MagicParams>().get<key>()) value)
    {
       constexpr auto defaultValue = getDefaultParamEntry<Param::one>();
       using value_type_searched = typename decltype(defaultValue)::value_type;
       constexpr auto indexOfRuntimeMaps = detail::Index<value_type_searched, const AllowedTypes::type>::value;
 
       auto& store = std::get<indexOfRuntimeMaps>(runtimestore_);
+
       auto it = store.find(key);
       if (it == store.end())
-         return defaultValue.defaultValue;
+      {
+         if (value == defaultValue.defaultValue)
+            return false;
+         store[key] = value;
+         return true;
+      }
       else
-         return it->second;
+      {
+         if (value == defaultValue.defaultValue)
+         {
+            store.erase(it);
+            return true;
+         }
+         else if (value != it->second)
+         {
+            it->second = value;
+            return true;
+         }
+         return false;
+      }
    }
 
 private:
@@ -172,10 +219,10 @@ struct MyMagicParams : MagicParams<Param, AllowedTypes<int, const char*, double>
 
 int main()
 {
-   constexpr auto entry = MyMagicParams::getDefaultParamEntry<Param::two>();
+   // constexpr auto entry = MyMagicParams::getDefaultParamEntry<Param::two>();
 
-   std::cout << "Parameter " << static_cast<int>(entry.key) << " with description'" << entry.description
-             << "' has default value '" << entry.defaultValue << "'.";
+   // std::cout << "Parameter " << static_cast<int>(entry.key) << " with description'" << entry.description
+   //           << "' has default value '" << entry.defaultValue << "'.";
 
    auto myParams = MyMagicParams();
    const auto& m = std::get<0>(myParams.runtimestore_);
@@ -186,6 +233,9 @@ int main()
    // constexpr auto indexOfRuntimeMaps = detail::Index<value_type_searched, typename allowed::type>::value;
 
    std::cout << i;
+   std::cout << "before" << myParams.get<Param::one>() << "\n";
+   myParams.set<Param::one>(2);
+   std::cout << myParams.get<Param::one>();
    // WOULD FAIL with meaningful static_assert-message.
    // constexpr auto entry = MagicParams::getDefaultParamEntry<Param::three>();
 }
