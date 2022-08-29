@@ -143,3 +143,6 @@ For runtime storing a
 The `AllowedTypes`-struct is designed to shrink a list of types such as `<int,int,const char*,double,int,short,const char*,std::string>` internally to `<double,int,short,const char*>` making use of template metaprogramming. It converts `std::string ` to `const char*` internally. The result of this type-list is the basis for the internally used `runtimeStore_`, where every tuple-entry maps to a type of the `AllowedTypes`-list.
 
 
+## Possible extension
+It would be nice to think about what would be possible if we can assume the enum to be a [magic_enum](https://github.com/Neargye/magic_enum)! Up to now there is no restriction on the enum variant, also [BETTER_ENUM](https://github.com/aantron/better-enums) should work out of the box (I did not test it so far). Having these tools at hand one could e.g. check if every enum has a mapping and output nicer compile-time static assert messages, if this is not the case, listing every enum that is missing.
+
