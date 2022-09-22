@@ -41,6 +41,8 @@ int main()
    constexpr auto desc = MyMagicParams::getDescription<Param::two>();
 
    std::cout << "Parameter 'two' has default value " << value << " and its description is '" << desc << "'\n";
+   // Parameter 'two' has default value Default-String and its description is 'second parameter'
+   
    // create runtime version
    auto myParams = MyMagicParams();
    auto valueBefore = myParams.get<Param::one>();
@@ -49,4 +51,5 @@ int main()
    auto valueAfter = myParams.get<Param::one>();
 
    std::cout << "Parameter 'one' was set from " << valueBefore << " to " << valueAfter;
+   // Parameter 'one' was set from 99 to 3
 }
